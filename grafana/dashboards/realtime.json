@@ -791,6 +791,81 @@
           "sort": "none"
         }
       }
+    },
+		    {
+      "id": 13,
+      "type": "xychart",
+      "title": "Altitude vs. temperature",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "${DS}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 25,
+        "w": 12,
+        "h": 10
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "${DS}"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT temperature_c, altitude_m FROM aprs_telemetry WHERE $__timeFilter(time) AND temperature_c IS NOT NULL AND altitude_m IS NOT NULL ORDER BY time"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "orange"
+          },
+          "custom": {
+            "show": "points+lines",
+            "pointSize": {
+              "fixed": 5
+            },
+            "lineWidth": 1
+          }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "temperature_c" },
+            "properties": [
+              { "id": "unit", "value": "celsius" },
+              { "id": "displayName", "value": "Temperature" }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "altitude_m" },
+            "properties": [
+              { "id": "unit", "value": "lengthm" },
+              { "id": "displayName", "value": "Altitude" }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "mapping": "auto",
+        "seriesMapping": "auto",
+        "dims": {
+          "x": "temperature_c"
+        },
+        "legend": {
+          "showLegend": false,
+          "displayMode": "hidden",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      }
     }
   ]
 }
