@@ -1,5 +1,5 @@
-
-<img width="2841" height="1376" alt="image" src="https://github.com/user-attachments/assets/bc99b4dd-90c6-46a6-a1e6-c71492de0405" />
+# Mission control and overview framework using Yamcs and Grafana
+<img width="2324" height="1433" alt="image" src="https://github.com/user-attachments/assets/ed68d71d-72ae-4447-b170-39c6b1f70af8" />
 
 # Getting started
 1. Copy the and saturate the env file: `cp .example-env .env && nano .env`
