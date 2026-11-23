@@ -2,7 +2,7 @@
 1. Copy the and saturate the env file: `cp .example-env .env && nano .env`
 2. Start the docker container `docker compose up`
 3. Open grafana `yourip:3002`, login with `admin` and the password you set in the `.env` file and go onto the `Yamana – Live Telemetry` Dashboard
-4. Run `python3 examples/simulate_aprs.py examples/exampledata/data.aprs`
+4. To test if everything is working run `python3 examples/simulate_aprs.py examples/exampledata/data.aprs`
 
 Clearing the aprs_telemetry after a test
 ```
