@@ -50,6 +50,12 @@
 3. Open grafana `yourip:3002`, login with `admin` and the password you set in the `.env` file and go onto the `Yamana – Live Telemetry` Dashboard
 4. To test if everything is working run `python3 examples/simulate_aprs.py examples/exampledata/data.aprs`
 
+## View a live waterfall
+Go onto the Yamana - SDR Waterfall view and run 
+```
+python3 examples/sdr_waterfall.py --freq 145e6
+```
+
 # Todo
 - [ ] Implement a waterfall panel using <canvas>
 - [ ] Timeline view
