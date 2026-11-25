@@ -26,4 +26,19 @@ CREATE TABLE aprs_telemetry (
 SELECT create_hypertable('aprs_telemetry', 'time');
 GRANT INSERT ON aprs_telemetry TO collector;
 GRANT SELECT ON aprs_telemetry TO grafana_ro;
+
+-- SDR waterfall: one row per sweep. bins = uint8 power values (bytea), one byte per FFT bin,
+-- scaled linearly so 0 = db_min and 255 = db_max (dBFS).
+CREATE TABLE sdr_spectrum (
+  time           timestamptz NOT NULL,
+  center_freq_hz bigint      NOT NULL,
+  sample_rate_hz integer     NOT NULL,
+  db_min         real        NOT NULL,
+  db_max         real        NOT NULL,
+  bins           bytea       NOT NULL
+);
+SELECT create_hypertable('sdr_spectrum', 'time');
+SELECT add_retention_policy('sdr_spectrum', INTERVAL '7 days');
+GRANT INSERT ON sdr_spectrum TO collector;
+GRANT SELECT ON sdr_spectrum TO grafana_ro;
 SQL

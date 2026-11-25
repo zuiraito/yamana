@@ -1,0 +1,96 @@
+{
+  "uid": "yamana-sdr",
+  "title": "Yamana \u2013 SDR Waterfall",
+  "tags": [
+    "yamana",
+    "sdr"
+  ],
+  "timezone": "browser",
+  "editable": true,
+  "graphTooltip": 0,
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "2s",
+  "time": {
+    "from": "now-5m",
+    "to": "now"
+  },
+  "timepicker": {
+    "refresh_intervals": [
+      "1s",
+      "2s",
+      "5s",
+      "10s",
+      "30s",
+      "1m"
+    ]
+  },
+  "annotations": {
+    "list": []
+  },
+  "links": [],
+  "templating": {
+    "list": [
+      {
+        "name": "DS",
+        "label": "Datasource",
+        "type": "datasource",
+        "query": "grafana-postgresql-datasource",
+        "hide": 2,
+        "refresh": 1,
+        "includeAll": false,
+        "multi": false,
+        "current": {}
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "marcusolsson-dynamictext-panel",
+      "title": "Waterfall",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "${DS}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 20
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "${DS}"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT time, center_freq_hz, sample_rate_hz, db_min, db_max, encode(bins, 'base64') AS bins FROM sdr_spectrum WHERE $__timeFilter(time) ORDER BY time"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {
+        "renderMode": "allRows",
+        "content": "",
+        "defaultContent": "No data",
+        "editors": [],
+        "editor": {
+          "language": "handlebars",
+          "format": "auto"
+        },
+        "helpers": "",
+        "afterRender": "// Business Text panel > JavaScript > \"After content ready\".\n// Data: one row per sweep (time, center_freq_hz, sample_rate_hz, db_min, db_max, bins[base64 uint8]).\n(function () {\n  const el = context.element;\n  const host = el.parentElement || el;\n\n  // Release the previous render's observer (the panel re-runs this code on every refresh)\n  if (el.__wfObserver) { el.__wfObserver.disconnect(); el.__wfObserver = null; }\n\n  // Accept whatever the plugin hands us: a selected DataFrame (All rows), a list of frames,\n  // or plain row objects.\n  let frame = context.dataFrame || (context.data || [])[0];\n  if (frame && !frame.fields && context.panel && context.panel.panelData && context.panel.panelData.series) {\n    frame = context.panel.panelData.series[0];\n  }\n  if (!frame) { el.textContent = 'No data'; return; }\n  const col = (name) => {\n    if (Array.isArray(frame)) { return frame.map((r) => r[name]); }   // row objects\n    const f = (frame.fields || []).find((x) => x.name === name);\n    if (!f) { return []; }\n    const v = f.values;\n    return Array.isArray(v) ? v : (v && v.toArray ? v.toArray() : Array.from(v || []));\n  };\n  const times = col('time').map(Number);\n  const cf = col('center_freq_hz').map(Number);\n  const sr = col('sample_rate_hz').map(Number);\n  const dMin = col('db_min').map(Number);\n  const dMax = col('db_max').map(Number);\n  const b64 = col('bins');\n  if (!times.length || !b64.length) {\n    el.textContent = 'No sweeps in the selected time range';\n    return;\n  }\n\n  // Decode, keep only sweeps with the newest sweep's bin count (config may change mid-range)\n  const last = times.length - 1;\n  const decode = (s) => {\n    const bin = atob(String(s).replace(/\\s/g, ''));\n    const a = new Uint8Array(bin.length);\n    for (let j = 0; j < bin.length; j++) { a[j] = bin.charCodeAt(j); }\n    return a;\n  };\n  const nBins = decode(b64[last]).length;\n  const rows = [];\n  for (let i = 0; i < times.length; i++) {\n    const a = decode(b64[i]);\n    if (a.length === nBins) { rows.push({ t: times[i], a }); }\n  }\n  const n = rows.length;\n  const f0 = cf[last] - sr[last] / 2;\n  const f1 = cf[last] + sr[last] / 2;\n  const dbLo = dMin[last];\n  const dbHi = dMax[last];\n\n  // 256-entry colour map: black > blue > cyan > yellow > red > white\n  const stops = [\n    [0.0, 0, 0, 0], [0.2, 0, 0, 160], [0.4, 0, 190, 220],\n    [0.65, 250, 230, 0], [0.85, 240, 40, 0], [1.0, 255, 255, 255],\n  ];\n  const lut = new Uint8ClampedArray(256 * 3);\n  for (let i = 0; i < 256; i++) {\n    const x = i / 255;\n    let k = 0;\n    while (k < stops.length - 2 && x > stops[k + 1][0]) { k++; }\n    const [xa, ra, ga, ba] = stops[k];\n    const [xb, rb, gb, bb] = stops[k + 1];\n    const u = (x - xa) / (xb - xa);\n    lut[i * 3] = ra + (rb - ra) * u;\n    lut[i * 3 + 1] = ga + (gb - ga) * u;\n    lut[i * 3 + 2] = ba + (bb - ba) * u;\n  }\n\n  // Off-screen image at native resolution: nBins x n, newest sweep on top\n  const off = document.createElement('canvas');\n  off.width = nBins;\n  off.height = n;\n  const octx = off.getContext('2d');\n  const img = octx.createImageData(nBins, n);\n  for (let r = 0; r < n; r++) {\n    const a = rows[n - 1 - r].a;\n    for (let x = 0; x < nBins; x++) {\n      const p = (r * nBins + x) * 4;\n      const c = a[x] * 3;\n      img.data[p] = lut[c];\n      img.data[p + 1] = lut[c + 1];\n      img.data[p + 2] = lut[c + 2];\n      img.data[p + 3] = 255;\n    }\n  }\n  octx.putImageData(img, 0, 0);\n\n  el.innerHTML = '';\n  const wrap = document.createElement('div');\n  wrap.style.cssText = 'position:relative;width:100%;height:100%;';\n  const canvas = document.createElement('canvas');\n  canvas.style.cssText = 'display:block;';\n  const tip = document.createElement('div');\n  tip.style.cssText = 'position:absolute;pointer-events:none;display:none;padding:2px 6px;' +\n    'background:rgba(0,0,0,.8);color:#fff;font:11px monospace;border-radius:3px;white-space:nowrap;';\n  wrap.appendChild(canvas);\n  wrap.appendChild(tip);\n  el.appendChild(wrap);\n\n  const M = { l: 58, r: 8, t: 6, b: 24 };\n  let geo = null;\n\n  const niceStep = (span, target) => {\n    const raw = span / target;\n    const pow = Math.pow(10, Math.floor(Math.log10(raw)));\n    const m = raw / pow;\n    return (m < 1.5 ? 1 : m < 3.5 ? 2 : m < 7.5 ? 5 : 10) * pow;\n  };\n\n  const draw = () => {\n    const w = Math.max(200, host.clientWidth);\n    const h = Math.max(150, host.clientHeight);\n    const dpr = window.devicePixelRatio || 1;\n    canvas.width = Math.round(w * dpr);\n    canvas.height = Math.round(h * dpr);\n    canvas.style.width = w + 'px';\n    canvas.style.height = h + 'px';\n    const ctx = canvas.getContext('2d');\n    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);\n\n    const pw = w - M.l - M.r;\n    const ph = h - M.t - M.b;\n    geo = { pw, ph };\n    ctx.fillStyle = '#000';\n    ctx.fillRect(0, 0, w, h);\n    ctx.imageSmoothingEnabled = false;\n    ctx.drawImage(off, 0, 0, nBins, n, M.l, M.t, pw, ph);\n\n    ctx.fillStyle = '#c8c8c8';\n    ctx.strokeStyle = 'rgba(255,255,255,.25)';\n    ctx.font = '11px sans-serif';\n    ctx.lineWidth = 1;\n\n    // Frequency axis\n    ctx.textAlign = 'center';\n    ctx.textBaseline = 'top';\n    const fStep = niceStep(f1 - f0, Math.max(3, pw / 90));\n    for (let f = Math.ceil(f0 / fStep) * fStep; f <= f1; f += fStep) {\n      const x = M.l + ((f - f0) / (f1 - f0)) * pw;\n      ctx.beginPath(); ctx.moveTo(x + 0.5, M.t); ctx.lineTo(x + 0.5, M.t + ph); ctx.stroke();\n      ctx.fillText((f / 1e6).toFixed(fStep < 1e5 ? 3 : 2) + ' MHz', x, M.t + ph + 5);\n    }\n\n    // Time axis: age relative to newest sweep\n    ctx.textAlign = 'right';\n    ctx.textBaseline = 'middle';\n    const tNew = rows[n - 1].t;\n    const tOld = rows[0].t;\n    const tStep = niceStep((tNew - tOld) / 1000, Math.max(2, ph / 60));\n    for (let s = 0; s <= (tNew - tOld) / 1000; s += tStep) {\n      const y = M.t + (s * 1000 / Math.max(1, tNew - tOld)) * ph;\n      ctx.beginPath(); ctx.moveTo(M.l, y + 0.5); ctx.lineTo(M.l + pw, y + 0.5); ctx.stroke();\n      ctx.fillText(s === 0 ? 'now' : '-' + (s >= 60 ? (s / 60).toFixed(s % 60 ? 1 : 0) + 'm' : s + 's'), M.l - 6, y);\n    }\n  };\n\n  canvas.addEventListener('mousemove', (e) => {\n    if (!geo) { return; }\n    const rect = canvas.getBoundingClientRect();\n    const x = e.clientX - rect.left - M.l;\n    const y = e.clientY - rect.top - M.t;\n    if (x < 0 || y < 0 || x >= geo.pw || y >= geo.ph) { tip.style.display = 'none'; return; }\n    const bin = Math.min(nBins - 1, Math.floor((x / geo.pw) * nBins));\n    const r = Math.min(n - 1, Math.floor((y / geo.ph) * n));\n    const sweep = rows[n - 1 - r];\n    const f = f0 + ((bin + 0.5) / nBins) * (f1 - f0);\n    const db = dbLo + (sweep.a[bin] / 255) * (dbHi - dbLo);\n    const ts = new Date(sweep.t).toLocaleTimeString();\n    tip.textContent = (f / 1e6).toFixed(4) + ' MHz  ' + db.toFixed(1) + ' dBFS  ' + ts;\n    tip.style.display = 'block';\n    tip.style.left = Math.min(rect.width - 230, e.clientX - rect.left + 12) + 'px';\n    tip.style.top = (e.clientY - rect.top + 12) + 'px';\n  });\n  canvas.addEventListener('mouseleave', () => { tip.style.display = 'none'; });\n\n  draw();\n  if (window.ResizeObserver) {\n    el.__wfObserver = new ResizeObserver(draw);\n    el.__wfObserver.observe(host);\n  }\n})();\n",
+        "contentPartials": [],
+        "externalStyles": [],
+        "styles": ""
+      }
+    }
+  ]
+}
